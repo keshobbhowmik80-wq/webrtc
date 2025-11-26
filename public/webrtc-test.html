@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebRTC Signaling Test</title>
+</head>
+<body>
+    <h1>WebRTC Signaling Test</h1>
+
+    <div>
+        <button onclick="testSignaling()">Test Signaling</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div id="log" style="border: 1px solid #ccc; padding: 10px; margin: 10px 0; height: 300px; overflow-y: scroll; background: #f5f5f5;"></div>
+
+    <script>
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += new Date().toLocaleTimeString() + ': ' + message + '<br>';
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        // Get CSRF token from Laravel meta tag
+        function getCsrfToken() {
+            return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || 'no-csrf-token';
+        }
+
+        async function testSignaling() {
+            const userId = 'test-user-' + Math.random().toString(36).substring(7);
+            const room = 'test-room';
+
+            log('Starting test with user: ' + userId);
+            log('CSRF Token: ' + getCsrfToken());
+
+            // Test 1: Send a POST signal
+            log('Sending POST signal...');
+            try {
+                const postResponse = await fetch('/webrtc/signal', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': getCsrfToken()
+                    },
+                    body: JSON.stringify({
+                        room: room,
+                        type: 'join',
+                        data: { message: 'Hello from ' + userId },
+                        userId: userId
+                    })
+                });
+
+                if (!postResponse.ok) {
+                    throw new Error(`HTTP ${postResponse.status}: ${postResponse.statusText}`);
+                }
+
+                const postResult = await postResponse.json();
+                log('POST Response: ' + JSON.stringify(postResult));
+            } catch (error) {
+                log('POST Error: ' + error.message);
+            }
+
+            // Wait a bit for the signal to be stored
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Test 2: Retrieve signals
+            log('Retrieving signals...');
+            try {
+                const getResponse = await fetch('/webrtc/signal?room=' + room + '&userId=' + userId);
+                const getResult = await getResponse.json();
+                log('GET Response: ' + JSON.stringify(getResult));
+
+                if (getResult.signals && getResult.signals.length > 0) {
+                    log('✅ SUCCESS: Signals are working! Found ' + getResult.signals.length + ' signal(s)');
+                } else {
+                    log('❌ No signals found. Backend might not be storing signals properly.');
+                }
+            } catch (error) {
+                log('GET Error: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
