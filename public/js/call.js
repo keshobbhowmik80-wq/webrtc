@@ -4,47 +4,56 @@ let localVideoTrack = null;
 let joined = false;
 let uid = null;
 
+// ----------------------
+// GET TOKEN
+// ----------------------
 async function getToken(channel, uid) {
     const response = await fetch(`/agora/token?channel=${channel}&uid=${uid}`);
-    const data = await response.json();
-    return data;
+    return await response.json();
 }
 
-async function initCall(channel) {
-    if (joined) return; // prevent multiple joins
+// ----------------------
+// JOIN CALL (VIDEO / AUDIO)
+// ----------------------
+async function initCall(channel, mode) {
+    if (joined) return;
 
-    // Generate UID before requesting token
+    joined = true;
+
+    document.getElementById("local-player").innerHTML = "";
+    document.getElementById("remote-playerlist").innerHTML = "";
+
     uid = Math.floor(Math.random() * 1000000);
     const { appId, token } = await getToken(channel, uid);
 
     client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
     await client.join(appId, channel, token, uid);
 
-    localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-    localVideoTrack = await AgoraRTC.createCameraVideoTrack();
+    if (mode === "audio") {
+        localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        await client.publish([localAudioTrack]);
+        document.getElementById("local-player").innerHTML =
+            "<div class='audio-label'>Audio Call Connected</div>";
+    } else {
+        localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        localVideoTrack = await AgoraRTC.createCameraVideoTrack();
 
-    // play local video
-    localVideoTrack.play("local-player");
-
-    // publish local tracks
-    await client.publish([localAudioTrack, localVideoTrack]);
+        localVideoTrack.play("local-player");
+        await client.publish([localAudioTrack, localVideoTrack]);
+    }
 
     client.on("user-published", async (user, mediaType) => {
         await client.subscribe(user, mediaType);
 
         if (mediaType === "video") {
-            const remoteContainerId = `remote-player-${user.uid}`;
-            let remoteContainer = document.getElementById(remoteContainerId);
-            if (!remoteContainer) {
-                remoteContainer = document.createElement("div");
-                remoteContainer.id = remoteContainerId;
-                remoteContainer.style.width = "200px";
-                remoteContainer.style.height = "150px";
-                remoteContainer.style.border = "1px solid #000";
-                remoteContainer.style.margin = "5px";
-                document.getElementById("remote-playerlist").appendChild(remoteContainer);
+            const id = `remote-player-${user.uid}`;
+            if (!document.getElementById(id)) {
+                const div = document.createElement("div");
+                div.id = id;
+                div.className = "remote-video";
+                document.getElementById("remote-playerlist").appendChild(div);
             }
-            user.videoTrack.play(remoteContainer.id);
+            user.videoTrack.play(id);
         }
 
         if (mediaType === "audio") {
@@ -52,31 +61,38 @@ async function initCall(channel) {
         }
     });
 
-    client.on("user-unpublished", user => {
+    client.on("user-unpublished", (user) => {
         const el = document.getElementById(`remote-player-${user.uid}`);
         if (el) el.remove();
     });
 }
 
+// ----------------------
+// LEAVE CALL
+// ----------------------
 async function leaveCall() {
-    if (!joined) return;
+    if (!joined || !client) return;
 
     if (localAudioTrack) {
+        localAudioTrack.stop();
         localAudioTrack.close();
-        localAudioTrack = null;
     }
+
     if (localVideoTrack) {
+        localVideoTrack.stop();
         localVideoTrack.close();
-        localVideoTrack = null;
     }
-    if (client) {
-        await client.leave();
-        client = null;
-    }
+
+    await client.leave();
 
     document.getElementById("local-player").innerHTML = "";
     document.getElementById("remote-playerlist").innerHTML = "";
 
-    joined = false;
+    client = null;
+    localAudioTrack = null;
+    localVideoTrack = null;
     uid = null;
+    joined = false;
+
+    console.log("Left the call.");
 }
