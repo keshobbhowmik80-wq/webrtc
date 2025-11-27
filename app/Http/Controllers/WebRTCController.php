@@ -3,13 +3,11 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
+use App\Events\WebRTCMessage;
+use Pusher\Pusher;
 
 class WebRTCController extends Controller
 {
-    private $signals = [];
-    private $nextSignalId = 1;
-
     public function signal(Request $request)
     {
         if ($request->isMethod('post')) {
@@ -20,64 +18,42 @@ class WebRTCController extends Controller
     }
 
     private function handlePostSignal(Request $request)
-    {
-        $data = $request->validate([
-            'room' => 'required|string',
-            'type' => 'required|string',
-            'data' => 'required|array',
-            'userId' => 'required|string'
-        ]);
+{
+    $data = $request->validate([
+        'room' => 'required|string',
+        'type' => 'required|string',
+        'data' => 'required|array',
+        'userId' => 'required|string'
+    ]);
 
-        // Create signal with unique ID
-        $signal = [
-            'id' => $this->nextSignalId++,
+    // Use Pusher PHP SDK directly
+    $pusher = new \Pusher\Pusher(
+        config('broadcasting.connections.pusher.key'),
+        config('broadcasting.connections.pusher.secret'),
+        config('broadcasting.connections.pusher.app_id'),
+        [
+            'cluster' => config('broadcasting.connections.pusher.options.cluster'),
+            'useTLS' => true
+        ]
+    );
+
+    // Send event directly to Pusher
+    $pusher->trigger(
+        'webrtc.' . $data['room'],
+        'webrtc.signal',
+        [
             'type' => $data['type'],
             'data' => $data['data'],
-            'fromUserId' => $data['userId'],
-            'room' => $data['room'],
-            'timestamp' => now()
-        ];
+            'fromUserId' => $data['userId']
+        ]
+    );
 
-        // Store signal in cache (persistent across requests)
-        $this->storeSignal($data['room'], $signal);
-
-        return response()->json(['success' => true, 'signalId' => $signal['id']]);
-    }
+    return response()->json(['success' => true]);
+}
 
     private function handleGetSignal(Request $request)
     {
-        $room = $request->query('room', 'default');
-        $userId = $request->query('userId');
-
-        // Get all signals for this room that aren't from the current user
-        $signals = $this->getSignals($room);
-        $filteredSignals = array_filter($signals, function($signal) use ($userId) {
-            return $signal['fromUserId'] !== $userId;
-        });
-
-        // Return the signals
-        return response()->json([
-            'signals' => array_values($filteredSignals)
-        ]);
-    }
-
-    private function storeSignal($room, $signal)
-    {
-        $key = "webrtc_signals_{$room}";
-        $signals = Cache::get($key, []);
-
-        // Keep only last 50 signals to prevent memory issues
-        $signals[] = $signal;
-        if (count($signals) > 50) {
-            $signals = array_slice($signals, -50);
-        }
-
-        Cache::put($key, $signals, now()->addMinutes(10)); // Store for 10 minutes
-    }
-
-    private function getSignals($room)
-    {
-        $key = "webrtc_signals_{$room}";
-        return Cache::get($key, []);
+        // Keep this for backward compatibility, but it won't be used anymore
+        return response()->json(['signals' => []]);
     }
 }

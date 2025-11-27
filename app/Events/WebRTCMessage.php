@@ -2,7 +2,7 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\PresenceChannel;
+use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -21,17 +21,21 @@ class WebRTCMessage implements ShouldBroadcast
     }
 
     public function broadcastOn()
-{
-    return new \Illuminate\Broadcasting\Channel('webrtc.' . $this->room);
-}
+    {
+        return new Channel('webrtc.' . $this->room);
+    }
 
     public function broadcastAs()
     {
-        return 'WebRTCMessage';
+        return 'webrtc.signal';
     }
 
     public function broadcastWith()
     {
-        return $this->message;
+        return [
+            'type' => $this->message['type'],
+            'data' => $this->message['data'],
+            'fromUserId' => $this->message['userId']
+        ];
     }
 }
