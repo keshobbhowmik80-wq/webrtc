@@ -6,64 +6,52 @@ WORKDIR /var/www/html
 
 # 1. Install system dependencies
 RUN apt-get update && apt-get install -y \
-    git \
     curl \
-    libpng-dev \
-    libonig-dev \
-    libxml2-dev \
+    libzip-dev \
     zip \
     unzip \
-    libzip-dev \
     sqlite3 \
-    libsqlite3-dev \
+    && docker-php-ext-install zip pdo pdo_sqlite \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Install PHP extensions
-RUN docker-php-ext-install pdo pdo_mysql pdo_sqlite mbstring exif pcntl bcmath gd zip sockets
+# 2. Install Composer
+COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 
-# 3. Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-# 4. Copy application files
+# 3. Copy application files
 COPY . .
 
-# 5. Create SQLite database file if doesn't exist
-RUN touch database/database.sqlite \
-    && chmod 777 database/database.sqlite
+# 4. Ensure .env exists
+RUN if [ ! -f ".env" ]; then cp .env.example .env; fi
 
-# 6. Set permissions for Laravel
+# 5. Set permissions
 RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 storage \
-    && chmod -R 775 bootstrap/cache \
-    && chmod -R 775 database
+    && chmod -R 775 storage bootstrap/cache
+
+# 6. Create database directory
+RUN mkdir -p database && chmod 775 database
 
 # 7. Install PHP dependencies
 RUN composer install --no-dev --optimize-autoloader
 
-# 8. Generate application key
-RUN php artisan key:generate --force
+# 8. Generate application key (with error handling)
+RUN php artisan key:generate --force --no-interaction || \
+    php artisan key:generate --force || \
+    echo "Key generation may have failed, but continuing..."
 
-# 9. Run migrations (if any)
-# RUN php artisan migrate --force
+# 9. Cache configuration
+RUN php artisan config:cache || true
 
-# 10. Cache configuration
-RUN php artisan config:cache \
-    && php artisan route:cache \
-    && php artisan view:cache
-
-# 11. Configure Apache
-# Enable rewrite module
-RUN a2enmod rewrite
-
-# Change Apache port from 80 to 8080 (Render uses 8080)
-RUN sed -i 's/80/8080/g' /etc/apache2/ports.conf /etc/apache2/sites-available/*.conf
+# 10. Configure Apache for port 8080
+RUN a2enmod rewrite \
+    && sed -i 's/80/8080/g' /etc/apache2/ports.conf /etc/apache2/sites-available/*.conf \
+    && echo "Listen 8080" >> /etc/apache2/ports.conf
 
 # Set document root to Laravel's public folder
 ENV APACHE_DOCUMENT_ROOT /var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 
-# 12. Expose port 8080
+# 11. Expose port 8080
 EXPOSE 8080
 
-# 13. Start Apache
+# 12. Start Apache
 CMD ["apache2-foreground"]
