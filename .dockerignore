@@ -1,0 +1,40 @@
+# IDE and editor files
+.idea
+.vscode
+*.sublime-*
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+
+# Vendor (will be installed fresh)
+vendor/
+
+# Laravel
+storage/*.key
+.env
+.env.*.local
+.env.backup
+.phpunit.result.cache
+_ide_helper.php
+_ide_helper_models.php
+.phpstorm.meta.php
+
+# Docker
+docker-compose.yml
+docker-compose.*.yml
+.dockerignore
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
